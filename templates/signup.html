@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Sign Up - Password Manager{% endblock %}
+
+{% block content %}
+<style>
+    /* Content area */
+    .content {
+        transition: all 0.3s ease;
+        padding: 0 !important;
+    }
+
+
+</style>
+<div class="auth-container">
+    <div class="auth-card">
+        <div class="auth-header">
+            <div class="auth-logo">
+                <i class="fas fa-user-plus"></i>
+            </div>
+            <h2 class="auth-title">Create Account</h2>
+            <p class="auth-subtitle">Join us to secure your passwords</p>
+        </div>
+        <div class="auth-body">
+            <form action="/signup" method="POST">
+                <div class="auth-form-group">
+                    <i class="fas fa-user auth-form-icon"></i>
+                    <input type="text" name="username" class="form-control auth-form-control" placeholder="Username" required>
+                </div>
+
+                <div class="auth-form-group">
+                    <i class="fas fa-lock auth-form-icon"></i>
+                    <input type="password" name="password" id="password" class="form-control auth-form-control" placeholder="Password" required>
+                    <button type="button" class="btn position-absolute end-0 top-50 translate-middle-y border-0 bg-transparent toggle-password">
+                        <i class="fas fa-eye text-muted"></i>
+                    </button>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100 auth-submit">
+                    <i class="fas fa-user-plus me-2"></i>Sign Up
+                </button>
+            </form>
+
+            <div class="auth-footer">
+                <p>Already have an account? <a href="/login">Log in</a></p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Toggle password visibility
+        document.querySelector('.toggle-password').addEventListener('click', function() {
+            const passwordInput = document.getElementById('password');
+            const icon = this.querySelector('i');
+
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                icon.className = 'fas fa-eye-slash text-muted';
+            } else {
+                passwordInput.type = 'password';
+                icon.className = 'fas fa-eye text-muted';
+            }
+        });
+    });
+</script>
+{% endblock %}
