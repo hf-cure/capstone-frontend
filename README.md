@@ -59,6 +59,8 @@ python app.py
 7. The system will validate your password against a secure database using Private Set Intersection
 8. View the validation results
 <img width="1507" alt="Screenshot 2025-05-22 at 2 08 48 pm" src="https://github.com/user-attachments/assets/34c148be-85d3-488a-95d8-0d860e941f77" />
+
+
 ## Application Flow
 
 The frontend communicates with the backend API to perform secure password validation:
