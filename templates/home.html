@@ -6,7 +6,7 @@
 <div class="main-header">
     <h1 class="main-title">
         <i class="fas fa-tachometer-alt me-2"></i>
-        Welcome, {{ session.get('username', 'User') }}!
+        Welcome, {{ session.get('name', 'User') }}!
     </h1>
     <div>
         <a href="/add" class="btn btn-primary">
@@ -43,17 +43,7 @@
                 </div>
                 <h5 class="card-title">Secure Passwords</h5>
                 <p class="display-5 fw-bold text-success">
-                    {% set secure_count = namespace(value=0) %}
-                    {% if passwords %}
-                        {% for website, username, pwd_hash, id in passwords %}
-                            {% if session['status_' ~ id] == 'secure' %}
-                                {% set secure_count.value = secure_count.value + 1 %}
-                            {% endif %}
-                        {% endfor %}
-                        {{ secure_count.value }}
-                    {% else %}
-                        0
-                    {% endif %}
+                    {{ secure_count }}
                 </p>
             </div>
         </div>
@@ -67,17 +57,7 @@
                 </div>
                 <h5 class="card-title">Insecure Passwords</h5>
                 <p class="display-5 fw-bold text-danger">
-                    {% set insecure_count = namespace(value=0) %}
-                    {% if passwords %}
-                        {% for website, username, pwd_hash, id in passwords %}
-                            {% if session['status_' ~ id] == 'insecure' %}
-                                {% set insecure_count.value = insecure_count.value + 1 %}
-                            {% endif %}
-                        {% endfor %}
-                        {{ insecure_count.value }}
-                    {% else %}
-                        0
-                    {% endif %}
+                    {{ insecure_count }}
                 </p>
             </div>
         </div>
@@ -90,12 +70,33 @@
         <h5 class="mb-0">
             <i class="fas fa-key me-2"></i>Your Passwords
         </h5>
-        <form action="/reset_security_status" method="POST" class="m-0">
-            <button class="btn btn-sm btn-outline-primary" type="submit" id="refresh-security">
-                <i class="fas fa-sync-alt me-1"></i>Reset Security Status
-            </button>
-        </form>
+        <div class="btn-group">
+            <form action="/reset_security_status" method="POST" class="d-inline m-0 me-2">
+                <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+                <button class="btn btn-sm btn-outline-primary" type="submit" id="refresh-security" aria-label="Reset security status">
+                    <i class="fas fa-sync-alt me-1"></i>Reset Security Status
+                </button>
+            </form>
+            <form action="/check_security" method="POST" class="d-inline m-0" id="security-check-form">
+                <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+                <button class="btn btn-sm btn-success" type="submit" id="check-all-security" aria-label="Check all passwords security">
+                    <i class="fas fa-shield-alt me-1"></i>Check All Security
+                </button>
+            </form>
+        </div>
     </div>
+
+    <!-- Toast container -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3"></div>
+    
+    <!-- Loader overlay -->
+    <div class="loader-overlay" id="securityCheckLoader">
+        <div class="d-flex flex-column align-items-center">
+            <div class="loader"></div>
+            <div class="loader-text">Checking password security...</div>
+        </div>
+    </div>
+
     <div class="card-body">
         {% if passwords %}
             <div class="table-responsive">
@@ -110,8 +111,8 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for website, username, pwd_hash, id in passwords %}
-                        <tr>
+                        {% for website, username, pwd_hash, status, id in passwords %}
+                        <tr data-id="{{ id }}">
                             <td>
                                 <div class="d-flex align-items-center">
                                     <span class="me-2">
@@ -133,13 +134,12 @@
                                     <input type="password" class="form-control password-field" value="••••••••" readonly>
                                 </div>
                             </td>
-                           <!-- In the status column of your password table -->
                             <td>
-                                {% if session.get('status_' ~ id) == 'secure' %}
+                                {% if status == 'secure' %}
                                     <span class="badge bg-success">
                                         <i class="fas fa-shield-alt me-1"></i>Secure
                                     </span>
-                                {% elif session.get('status_' ~ id) == 'insecure' %}
+                                {% elif status == 'insecure' %}
                                     <span class="badge bg-danger">
                                         <i class="fas fa-exclamation-triangle me-1"></i>Insecure
                                     </span>
@@ -151,7 +151,7 @@
                             </td>
                             <td>
                                 <div class="d-flex gap-2">
-                                    <form action="/send_entry/{{ id }}" method="POST" class="m-0">
+                                    <form action="/send_entry/{{ id }}" method="POST" class="m-0 security-check-form">
                                         <button type="submit" class="btn btn-sm btn-success">
                                             <i class="fas fa-shield-alt me-1"></i>Check Security
                                         </button>
@@ -190,7 +190,7 @@
 <!-- Password Strength Distribution Chart -->
 {% if passwords %}
 <div class="row mt-4">
-    <div class="col-md-6">
+    <div class="col-md-6 d-none" >
         <div class="card">
             <div class="card-header">
                 <h5 class="mb-0">
@@ -203,7 +203,7 @@
         </div>
     </div>
 
-    <div class="col-md-6">
+    <div class="col-md-12">
         <div class="card">
             <div class="card-header">
                 <h5 class="mb-0">
@@ -304,103 +304,255 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+    /* Loader overlay */
+    .loader-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.7);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        visibility: hidden;
+        opacity: 0;
+        transition: visibility 0s, opacity 0.3s linear;
+    }
+
+    .loader-overlay.show {
+        visibility: visible;
+        opacity: 1;
+    }
+
+    /* Spinner */
+    .loader {
+        width: 120px;
+        height: 120px;
+        border: 8px solid #f3f3f3;
+        border-top: 8px solid #0d6efd;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+
+    /* Loader text */
+    .loader-text {
+        color: white;
+        font-size: 18px;
+        margin-top: 20px;
+        text-align: center;
+    }
+
+    /* Animation */
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Copy username to clipboard
-        document.querySelectorAll('.copy-username').forEach(button => {
-            button.addEventListener('click', function() {
-                const username = this.getAttribute('data-username');
-                navigator.clipboard.writeText(username).then(() => {
-                    // Show toast notification
-                    const toastHTML = `
-                        <div class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
-                            <div class="toast-header">
-                                <i class="fas fa-check-circle text-success me-2"></i>
-                                <strong class="me-auto">Success</strong>
-                                <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
-                            </div>
-                            <div class="toast-body">
-                                Username copied to clipboard!
-                            </div>
-                        </div>
-                    `;
+        // Get loader overlay element
+        const loaderOverlay = document.getElementById('securityCheckLoader');
+        
+        // Security check form handling
+        const securityCheckForm = document.getElementById('security-check-form');
+        if (securityCheckForm) {
+            securityCheckForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                // Show loading state
+                const submitBtn = securityCheckForm.querySelector('button[type="submit"]');
+                const originalText = submitBtn.innerHTML;
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
+                
+                fetch('/send_all_items', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('input[name="_csrf"]')?.value || ''
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Security check response:', data);
+                    
+                    if (data.status === 'success') {
+                       // Update status badges in the table
+                        if (data.status_updates) {
+                            Object.entries(data.status_updates).forEach(([id, status]) => {
+                                const statusCells = document.querySelectorAll(`tr[data-id="${id}"] td:nth-child(4)`);
+                                statusCells.forEach(statusCell => {
+                                    if (status === 'insecure') {
+                                        statusCell.innerHTML = `
+                                            <span class="badge bg-danger">
+                                                <i class="fas fa-exclamation-triangle me-1"></i>Insecure
+                                            </span>
+                                        `;
+                                    } else {
+                                        statusCell.innerHTML = `
+                                            <span class="badge bg-success">
+                                                <i class="fas fa-shield-alt me-1"></i>Secure
+                                            </span>
+                                        `;
+                                    }
+                                });
+                            });
+                        }
 
-                    const toastContainer = document.querySelector('.toast-container');
-                    toastContainer.insertAdjacentHTML('beforeend', toastHTML);
-
-                    const newToast = toastContainer.lastElementChild;
-                    const bsToast = new bootstrap.Toast(newToast, {
-                        autohide: true,
-                        delay: 3000
-                    });
-
-                    bsToast.show();
-
-                    // Add event listener to close button
-                    newToast.querySelector('.btn-close').addEventListener('click', function() {
-                        bsToast.hide();
+                        
+                        // Update the statistics cards - FIXED SELECTOR
+                        // The issue is here - we need to target the correct elements
+                        const cards = document.querySelectorAll('.row:first-of-type .card');
+                        if (cards.length >= 3) {
+                            const secureElement = cards[1].querySelector('.display-5');
+                            const insecureElement = cards[2].querySelector('.display-5');
+                            
+                            if (secureElement) secureElement.textContent = data.secure_count;
+                            if (insecureElement) insecureElement.textContent = data.insecure_count;
+                        } else {
+                            console.error('Card elements not found. Structure:', cards);
+                        }
+                        
+                        // Update the chart if it exists
+                        const securityChart = window.Chart && Chart.getChart('securityChart');
+                        if (securityChart) {
+                            securityChart.data.datasets[0].data = [data.secure_count, data.insecure_count];
+                            securityChart.update();
+                        }
+                        
+                        // Show success message
+                        showToast('success', 'Security Check Complete', 
+                            `Found ${data.matches_found} insecure passwords out of ${data.total_submitted} total passwords.`);
+                            console.log(data);
+                            window.location.reload(); // Reload the page
+                    } else {
+                        // Show error message
+                        showToast('danger', 'Error', data.message || 'Processing failed');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showToast('danger', 'Error', 'Failed to communicate with server');
+                })
+                .finally(() => {
+                    // Restore button state
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalText;
+                });
+            });
+        }
+    
+        // Setup delete password buttons
+        setupDeleteButtons();
+        
+        // Setup copy username buttons
+        setupCopyButtons();
+    
+        // Initialize chart if canvas exists
+        initializeChart();
+    
+        // Toast notification function
+        function showToast(type, title, message) {
+            // Find or create toast container
+            let toastContainer = document.querySelector('.toast-container');
+            if (!toastContainer) {
+                toastContainer = document.createElement('div');
+                toastContainer.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+                document.body.appendChild(toastContainer);
+            }
+            
+            const toastHTML = `
+                <div class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header">
+                        <i class="fas ${type === 'success' ? 'fa-check-circle text-success' : 'fa-exclamation-circle text-danger'} me-2"></i>
+                        <strong class="me-auto">${title}</strong>
+                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                    <div class="toast-body">
+                        ${message}
+                    </div>
+                </div>
+            `;
+    
+            toastContainer.insertAdjacentHTML('beforeend', toastHTML);
+    
+            const newToast = toastContainer.lastElementChild;
+            const bsToast = new bootstrap.Toast(newToast, {
+                autohide: true,
+                delay: 5000
+            });
+    
+            bsToast.show();
+    
+            // Add event listener to close button
+            newToast.querySelector('.btn-close').addEventListener('click', function() {
+                bsToast.hide();
+            });
+            
+            // Auto-remove the toast from DOM after it's hidden
+            newToast.addEventListener('hidden.bs.toast', function() {
+                newToast.remove();
+            });
+        }
+    
+        // Function to setup delete buttons
+        function setupDeleteButtons() {
+            const deleteButtons = document.querySelectorAll('.delete-password');
+            const deleteModal = document.getElementById('deleteModal');
+            const deleteForm = document.getElementById('deleteForm');
+            
+            deleteButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const id = this.getAttribute('data-id');
+                    deleteForm.action = `/delete_password/${id}`;
+                    
+                    // Create Bootstrap modal instance and show it
+                    const modal = new bootstrap.Modal(deleteModal);
+                    modal.show();
+                });
+            });
+        }
+    
+        // Function to setup copy username buttons
+        function setupCopyButtons() {
+            const copyButtons = document.querySelectorAll('.copy-username');
+            
+            copyButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const username = this.getAttribute('data-username');
+                    
+                    // Copy to clipboard
+                    navigator.clipboard.writeText(username).then(() => {
+                        showToast('success', 'Copied!', 'Username copied to clipboard');
+                    }).catch(err => {
+                        console.error('Failed to copy text: ', err);
+                        showToast('danger', 'Error', 'Failed to copy username');
                     });
                 });
             });
-        });
-
-        // Handle password deletion
-        const deleteModal = document.getElementById('deleteModal');
-        const bsDeleteModal = new bootstrap.Modal(deleteModal);
-        const deleteForm = document.getElementById('deleteForm');
-
-        document.querySelectorAll('.delete-password').forEach(button => {
-            button.addEventListener('click', function() {
-                const passwordId = this.getAttribute('data-id');
-                deleteForm.action = `/delete_password/${passwordId}`;
-                bsDeleteModal.show();
-            });
-        });
-
-        // Handle security status reset
-        const resetSecurityButton = document.getElementById('refresh-security');
-        const resetSecurityModal = document.getElementById('resetSecurityModal');
-        const bsResetSecurityModal = new bootstrap.Modal(resetSecurityModal);
-
-        if (resetSecurityButton) {
-            resetSecurityButton.addEventListener('click', function(e) {
-                e.preventDefault();
-                bsResetSecurityModal.show();
-            });
         }
-
-        // Password security chart
-        {% if passwords %}
-        const securityChart = document.getElementById('securityChart');
-        if (securityChart) {
-            // Count password security statuses
-            let secureCount = 0;
-            let insecureCount = 0;
-            let unknownCount = 0;
-
-            {% for website, username, pwd_hash, id in passwords %}
-                {% if session['status_' ~ id] == 'secure' %}
-                    secureCount++;
-                {% elif session['status_' ~ id] == 'insecure' %}
-                    insecureCount++;
-                {% else %}
-                    unknownCount++;
-                {% endif %}
-            {% endfor %}
-
-            new Chart(securityChart, {
+    
+        // Function to initialize security chart
+        function initializeChart() {
+            const chartCanvas = document.getElementById('securityChart');
+            if (!chartCanvas || !window.Chart) return;
+            
+            // Get counts from HTML
+            const secureCount = parseInt(document.querySelector('.row:first-of-type .card:nth-child(2) .display-5')?.textContent || '0');
+            const insecureCount = parseInt(document.querySelector('.row:first-of-type .card:nth-child(3) .display-5')?.textContent || '0');
+            
+            new Chart(chartCanvas, {
                 type: 'doughnut',
                 data: {
-                    labels: ['Secure', 'Insecure', 'Unknown'],
+                    labels: ['Secure', 'Insecure'],
                     datasets: [{
-                        data: [secureCount, insecureCount, unknownCount],
-                        backgroundColor: [
-                            '#2ec4b6',  // success
-                            '#e63946',  // danger
-                            '#adb5bd'   // gray
-                        ],
-                        borderWidth: 0
+                        data: [secureCount, insecureCount],
+                        backgroundColor: ['#28a745', '#dc3545'],
+                        borderWidth: 1
                     }]
                 },
                 options: {
@@ -410,12 +562,49 @@
                         legend: {
                             position: 'bottom'
                         }
-                    },
-                    cutout: '70%'
+                    }
                 }
             });
         }
-        {% endif %}
+
+        // Add functionality for individual security check buttons 
+        const individualSecurityForms = document.querySelectorAll('form[action^="/send_entry/"]');
+        individualSecurityForms.forEach(form => {
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                // Show the loader - Now using the properly defined loaderOverlay variable
+                loaderOverlay.classList.add('show');
+                
+                // Get form action URL
+                const actionUrl = this.getAttribute('action');
+                
+                // Submit form via fetch
+                fetch(actionUrl, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': document.querySelector('input[name="_csrf"]')?.value || ''
+                    }
+                })
+                .then(response => {
+                    
+                    if (response.ok) {
+                        // Add a small delay to make the loader visible
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1000);
+                    } else {
+                        loaderOverlay.classList.remove('show');
+                        showToast('danger', 'Error', 'Failed to check password security');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    loaderOverlay.classList.remove('show');
+                    showToast('danger', 'Error', 'Failed to communicate with server');
+                });
+            });
+        });
     });
 </script>
 {% endblock %}
