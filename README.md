@@ -42,16 +42,23 @@ python app.py
 ## How to Use
 
 1. Navigate to http://127.0.0.1:5000/signup
-2. Create a new account
-3. Login to system using the same credentials as signup
-4. Add password details including:
+   <img width="1512" alt="Screenshot 2025-05-22 at 2 07 38 pm" src="https://github.com/user-attachments/assets/a029f69d-c8ba-4b42-a4f1-f0ba1e2c0c5c" />
+
+3. Create a new account
+4. Login to system using the same credentials as signup
+<img width="1512" alt="Screenshot 2025-05-22 at 2 05 34 pm" src="https://github.com/user-attachments/assets/cd349acf-3b85-40b1-b5a1-25bd8ae9bc78" />
+
+5. Add password details including:
    - Website name
    - Username
    - Password
-5. Click "Add Password"
-6. The system will validate your password against a secure database using Private Set Intersection
-7. View the validation results
 
+<img width="1506" alt="Screenshot 2025-05-22 at 2 08 29 pm" src="https://github.com/user-attachments/assets/519d7bf9-9098-4501-9ee1-80d713f3e6fc" />
+
+6. Click "Add Password"
+7. The system will validate your password against a secure database using Private Set Intersection
+8. View the validation results
+<img width="1507" alt="Screenshot 2025-05-22 at 2 08 48 pm" src="https://github.com/user-attachments/assets/34c148be-85d3-488a-95d8-0d860e941f77" />
 ## Application Flow
 
 The frontend communicates with the backend API to perform secure password validation:
